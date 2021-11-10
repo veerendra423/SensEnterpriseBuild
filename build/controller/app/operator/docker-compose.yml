@@ -1,0 +1,232 @@
+version: '3.4'
+services:
+    las:
+        image: $LAS_IMAGENAME:$LAS_TAG
+        devices:
+         - "/dev/isgx"
+        networks:
+          sensnet:
+    secure_cloud_api_container:
+        image: $SECURE_CLOUD_API_IMAGENAME:$SECURE_CLOUD_API_TAG
+        environment:
+          - SECURE_CLOUD_API_HOSTNAME
+          - SECURE_CLOUD_API_LLS_ENDPOINT
+          - SECURE_CLOUD_API_RLS_ENDPOINT 
+          - SECURE_CLOUD_API_DOCKER_API_ENDPOINT
+          - SECURE_CLOUD_API_SENSCLI_API_ENDPOINT
+          - SECURE_CLOUD_API_IPFS_API_ENDPOINT
+          - SECURE_CLOUD_API_DOCKER_PORT
+          - SECURE_CLOUD_API_SERVER_PORT
+          - SECURE_CLOUD_API_USE_IPFS
+          - SECURE_CLOUD_API_GOOGLE_APPLICATION_CREDENTIALS
+          - SECURE_CLOUD_API_STORAGE_BUCKET_NAME=${SECURE_CLOUD_API_GCS_BUCKET_NAME}
+          - SECURE_CLOUD_API_SANDBOX_HOSTNAME
+          - SECURE_CLOUD_API_SANDBOX_USERNAME
+          - SECURE_CLOUD_API_SANDBOX_IDENTITY_FILE
+          - SECURE_CLOUD_API_SENSPMGR_API_ENDPOINT
+          - SENSSELF_DIGEST=$SECURE_CLOUD_API_DIGEST
+          - SENSSELF_HOSTALIAS=$SECURE_CLOUD_API_HOSTALIAS
+          - product_version=default
+          - RELEASE_TAG
+          - MARIADB_HOST
+          - MARIADB_SERVER_PORT
+          - MYSQL_DATABASE
+          - MYSQL_USER
+          - MYSQL_PASSWORD
+          - SECURE_CLOUD_API_STORAGE_SERVICE=${SENSORIANT_STORAGE_PROVIDER}
+          - SECURE_CLOUD_API_AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT}
+          - SECURE_CLOUD_API_AZURE_STORAGE_ACCESS_KEY=${AZURE_STORAGE_ACCESS_KEY}
+        ports:
+          - ${SECURE_CLOUD_API_DOCKER_PORT}:${SECURE_CLOUD_API_SERVER_PORT}
+        networks:
+          sensnet:
+        volumes:
+          - secure-cloud-api-spire-platforms:/mnt/platforms
+          - ./credentials:/opt/sensoriant/secure-cloud/api/credentials
+          - ./keys:/opt/sensoriant/secure-cloud/api/keys
+    SensMariaDb:
+        image: mariadb:${MARIADB_TAG}
+        environment:
+          - MYSQL_ROOT_PASSWORD
+          - MYSQL_DATABASE
+          - MYSQL_USER
+          - MYSQL_PASSWORD
+          - MYSQL_ALLOW_EMPTY_PASSWORD
+          - MYSQL_RANDOM_ROOT_PASSWORD
+          - MYSQL_INITDB_SKIP_TZINFO
+        restart: always
+        volumes:
+          - ./SensMariaDb/initdb.d:/docker-entrypoint-initdb.d
+          # - ./images/SensMariaDb/.SensMariaDbData:/var/lib/mysql
+        ports:
+          - target: ${MARIADB_SERVER_PORT}
+            published: ${MARIADB_DOCKER_PORT}
+        networks:
+          sensnet:
+    nginx:
+        image: $NGINX_IMAGENAME:$NGINX_TAG
+        ports:
+          - 443:443
+        volumes:
+            - ./cert/server.crt:/etc/ssl/certs/server.crt
+            - ./cert/server.key:/etc/ssl/certs/server.key 
+            - ./nginx.conf:/etc/nginx/nginx.conf
+        networks:
+          sensnet:
+    prefect:
+        image: $PREFECT_IMAGENAME:$PREFECT_TAG
+        networks:
+          sensnet:
+    cas:
+        image: $CAS_IMAGENAME:$CAS_TAG
+        #command: cas -c /etc/cas/cas.toml
+        devices:
+         - "/dev/isgx"
+        volumes:
+         - ./cas-availability-config.toml:/etc/cas/cas.toml
+         - ./cas-owner-config-with-audit.toml:/etc/cas/cas-default-owner-config.toml
+         - ./cas:/cas/
+        ports:
+          - 8081:8081
+          - 18765:18765
+        depends_on:
+         - las
+        networks:
+          sensnet:
+    ras_server:
+       image: $SENSRAS_SERVER_IMAGENAME:$SENSRAS_SERVER_TAG
+       environment:
+         - SENSORIANT_SPIRE_TRUST_DOMAIN
+         - SENSORIANT_SPIRE_SERVER_PORT
+         - SENSORIANT_SPIRE_SERVER_PLATFORM_NAME_WHITELIST
+         - SENSORIANT_SPIRE_SERVER_PLATFORM_MEASUREMENT_WHITELIST
+         - RELEASE_TAG
+         - GCS_BUCKET_NAME
+         - SENSCLI_DREG
+         - LOG_LEVEL
+         - MARIADB_HOST
+         - MARIADB_DOCKER_PORT
+         - MYSQL_DATABASE
+         - MYSQL_USER
+         - MYSQL_PASSWORD
+       ports:
+         - target: ${SENSORIANT_SPIRE_SERVER_PORT}
+           published: ${SENSORIANT_SPIRE_SERVER_PORT}
+       volumes:
+         - secure-cloud-api-spire-platforms:/mnt/platforms
+       networks:
+         sensnet:
+       depends_on: 
+         - SensMariaDb
+    senscli:
+       image: $SENSCLI_IMAGENAME:$SENSCLI_TAG
+       environment:
+         - GOOGLE_APPLICATION_CREDENTIALS=/opt/creds/gcp-dataset-storage-credentials.json
+         - SENSCLI_API_SERVER_PORT
+         - SENSCLI_API_DOCKER_PORT
+         - SENSCLI_DREG
+         - SENSCLI_DCRED
+         - SENSCLI_MNT
+         - SENSCLI_USE_REF
+         - SENSCLI_REF_ALGO_IMAGE
+         - SENSCLI_REF_ALGO_CREDS
+       volumes:
+         - ./credentials:/opt/creds
+       ports:
+          - ${SENSCLI_API_SERVER_PORT}:${SENSCLI_API_DOCKER_PORT}
+       command: sensec -http ${SENSCLI_API_DOCKER_PORT}
+       networks:
+         sensnet:
+    SensLLS:
+        privileged: true
+        image: $SENSLLS_IMAGENAME:$SENSLLS_TAG
+        environment:
+         - SENSLLS_HOSTNAME
+         - SENSSELF_DIGEST=$SENSLLS_DIGEST
+         - SENSSELF_HOSTALIAS=$SENSLLS_HOSTALIAS_CONTROLLER
+        volumes:
+            - /sys:/sys
+            - ./SensLLS:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLLS_PORT:$SENSLLS_PORT
+        command: /SensLLS/SensLLS -httpMode=http -port=$SENSLLS_PORT -rlsApiCall=$SENSRLS_URL:$SENSRLS_MTLS_PORT/rls/v1 -rlsCertFile=/SensLLS/rlsCert.pem -rlsKeyFile=/SensLLS/rlsKey.pem
+        networks:
+          sensnet:
+    SensRLS:
+        privileged: true
+        image: $SENSRLS_IMAGENAME:$SENSRLS_TAG
+        environment:
+         - SENSRLS_HOSTNAME
+         - SENSSELF_DIGEST=$SENSRLS_DIGEST
+         - SENSSELF_HOSTALIAS=$SENSRLS_HOSTALIAS
+        volumes:
+            - /sys:/sys
+            - ./SensRLS:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSRLS_MTLS_PORT:$SENSRLS_MTLS_PORT
+            - $SENSRLS_API_PORT:$SENSRLS_API_PORT
+        command: /SensRLS/SensRLS -httpMode=mtls -port=$SENSRLS_MTLS_PORT -apiHttpMode=http -apiPort=$SENSRLS_API_PORT -certFile=/SensRLS/rlsCert.pem -keyFile=/SensRLS/rlsKey.pem -apiCertFile=/SensRLS/apiRLSCert.pem -apiKeyFile=/SensRLS/apiRLSKey.pem
+        networks:
+          sensnet:
+    SensPipelineMgr:
+        image: $SENSPMGR_IMAGENAME:$SENSPMGR_TAG
+        environment:
+         - USE_PREFECT
+         - PREFECT_SERVER_ADDR
+         - PREFECT_LOG_LEVEL
+         - SENSPMGR_HOST
+         - SENSPMGR_PORT
+         - NO_KUBE
+         - NO_KUBE_SANDBOX
+         - NO_KUBE_SANDBOX_USER
+         - USE_PREFECT_AGENT_ON_SANDBOX
+         - NO_KUBE_USER_IDENTITY
+         - RELEASE_TAG=$RELEASE_TAG
+         - SENSPMGR_PROJ
+         - SENSPMGR_FLOW
+         - SENSLLS_HOST=senslls
+         - SENSLLS_PORT
+         - SENSSELF_DIGEST=$SENSPMGR_DIGEST
+         - SENSSELF_HOSTALIAS=$SENSPMGR_HOSTALIAS
+        ports:
+            - $SENSPMGR_PORT:$SENSPMGR_PORT
+        volumes:
+            - ./credentials:/credentials
+        command: bash -c "sudo service ssh start; ./genenv.sh; ./run_prefect_agent.sh; ./pmgrsrv"
+        networks:
+          sensnet:
+    SensArchiver:
+        image: $SENSARCHIVER_IMAGENAME:$SENSARCHIVER_TAG
+        environment:
+         - SENSARCHIVER_HTTP_PORT=$SENSARCHIVER_HTTP_PORT
+         - SENSARCHIVER_SOURCE_DIRECTORY=$SENSARCHIVER_SOURCE_DIRECTORY
+         - SENSARCHIVER_TYPE=$SENSARCHIVER_TYPE
+         - SENSARCHIVER_INTERVAL=$SENSARCHIVER_INTERVAL
+         - SENSARCHIVER_DELETE_FILES=$SENSARCHIVER_DELETE_FILES
+         - SENSARCHIVER_DESTINATION_DIR=$SENSARCHIVER_DESTINATION_DIR
+         - SENSARCHIVER_IPFSDIR=$SENSARCHIVER_IPFSDIR
+         - SENSARCHIVER_IPFSIPADDR=$SENSARCHIVER_IPFSIPADDR
+         - SENSARCHIVER_IPFSPORT=$SENSARCHIVER_IPFSPORT
+         - SENSARCHIVER_PREFIX=${SENSARCHIVER_PREFIX}
+         - SENSARCHIVER_BUCKET_NAME=$GCS_BUCKET_NAME
+         - SENSARCHIVER_HOSTNAME
+         - SENSSELF_DIGEST=$SENSARCHIVER_DIGEST
+         - AZURE_STORAGE_ACCOUNT=$AZURE_STORAGE_ACCOUNT
+         - AZURE_STORAGE_ACCESS_KEY=$AZURE_STORAGE_ACCESS_KEY                
+        volumes:
+            - ./SensRLS/$SENSARCHIVER_SOURCE_DIRECTORY:/app/$SENSARCHIVER_SOURCE_DIRECTORY
+        ports:
+            - $SENSARCHIVER_HTTP_PORT:$SENSARCHIVER_HTTP_PORT
+        command: /SensArchiver/SensArchiver -delete
+networks:
+  sensnet:
+    external: true
+
+volumes:
+  secure-cloud-api-spire-platforms:

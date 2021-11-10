@@ -1,0 +1,136 @@
+name: $MAXSCALE_POLICY
+version: "0.2"
+
+# Access control:
+#   - only the data owner (CREATOR) can read or update the session
+#   - even the data owner cannot read the session secrets (i.e., the volume key and tag) or delete the session
+
+access_policy:
+  read:
+   - CREATOR
+  update:
+   - CREATOR
+
+# Service: copy_data
+#   - copies data from a given input directory give by argument -i
+#   - copies data to an output directory (which is in this case an encrypted volume) given by argument -o
+
+services:
+   - name: maxscale
+     image_name: maxscale_image
+     command: maxscale -d
+     mrenclaves: ["$MRENCLAVE_MAXSCALE"]
+     pwd: /
+     environment:
+       DB_CACERT: /etc/mariadb-ca.crt # import content of MariaDB CA certificate from DB policy session
+       DB_CLIENT_KEY: /etc/client.key # import content of client key from DB policy session
+       DB_CLIENT_CERT: /etc/client.crt # import content of client certificate from DB policy session
+
+images:
+  - name: maxscale_image
+    injection_files:
+        - path: /etc/maxscale.cnf
+          content: |
+            [server1]
+            type=server
+            address=mariadb
+            port=3306
+            protocol=MariaDBBackend
+            ssl=required
+            ssl_key=/etc/client.key
+            ssl_cert=/etc/client.crt
+            [Shard1-Mon]
+            type=monitor
+            module=mariadbmon
+            servers=server1
+            user=root
+            password=scontain
+            monitor_interval=2000
+            [MinRows-Routing-Service]
+            type=service
+            router=schemarouter
+            ignore_databases=test
+            servers=server1
+            user=root
+            password=scontain
+            filters=MinRows
+            [Sharding-Service]
+            type=service
+            router=schemarouter
+            servers=server1
+            user=root
+            password=scontain
+            router_options=refresh_interval=10,disable_sescmd_history=true
+            enable_root_user=true
+            [MinRowsRouter-Listener]
+            type=listener
+            service=MinRows-Routing-Service
+            protocol=MariaDBClient
+            port=3306            
+            address=maxscale
+            ssl=required
+            ssl_key=/etc/maxscale-server.key
+            ssl_cert=/etc/maxscale-server.crt
+            ssl_ca_cert=/etc/maxscale-ca.crt
+            [Sharding-Listener]
+            type=listener
+            service=Sharding-Service
+            protocol=MariaDBClient
+            port=3308            
+            ssl=required
+            ssl_key=/etc/maxscale-server.key
+            ssl_cert=/etc/maxscale-server.crt
+            ssl_ca_cert=/etc/maxscale-ca.crt
+            [CLI]
+            type=service
+            router=cli
+            [CLI-Listener]
+            type=listener
+            service=CLI
+            protocol=maxscaled
+            socket=default
+            [MinRows]
+            type=filter
+            module=minrows
+            min_resultset_rows=7
+            min_resultset_size=25600000
+            min_resultset_return=error
+            debug=1
+            tables=lab_test_data,lab_test_id,patient_profile
+        - path: /etc/maxscale-ca.crt
+          content: $$SCONE::session-ca-certificate.chain$$ # Use the database session's CA certificate as a trusted root CA cert. We can use chain here because we verify the session name in the DB
+        - path: /etc/maxscale-server.crt
+          content: $$SCONE::maxscale.crt$$ # export MariaDB server certificate
+        - path: /etc/maxscale-server.key
+          content: $$SCONE::maxscale.key$$
+        - path: /etc/maxscale-client.crt
+          content: $$SCONE::MAXSCALE_CLIENT_CERT.crt$$
+        - path: /etc/maxscale-client.key
+          content: $$SCONE::MAXSCALE_CLIENT_CERT.key$$
+        # - path: /etc/mariadb-ca.crt
+          # content: $$SCONE::MARIADB_CA_CERT.chain$$ # Use the database session's CA certificate as a trusted root CA cert. We can use chain here because we verify the session name in the DB
+        - path: /etc/client.crt
+          content: $$SCONE::MARIADB_CLIENT_CERT.crt$$
+        - path: /etc/client.key
+          content: $$SCONE::MARIADB_CLIENT_CERT.key$$
+
+# Import client credentials from DB session.
+secrets:
+    - name: db_user
+      kind: ascii
+      value: $DB_USER
+    - name: MARIADB_CLIENT_CERT
+      import: $DB_POLICY_NAME
+    - name: MARIADB_CA_CERT
+      import: $DB_POLICY_NAME
+    - name: MAXSCALE_CA_CERT 
+      kind: session-ca
+      export:
+      - $UPLOAD_POLICY_NAME 
+    - name: maxscale
+      kind: x509
+    - name: MAXSCALE_CLIENT_CERT
+      kind: x509
+      export:
+      - $UPLOAD_POLICY_NAME 
+

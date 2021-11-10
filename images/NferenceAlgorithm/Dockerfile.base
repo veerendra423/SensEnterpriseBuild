@@ -1,0 +1,24 @@
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:latest
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:09222020
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:10122020
+#FROM sconecuratedimages/sensoriant:pytorch-1.5.1-ubuntu18.04-scone5.0.0-v0.1
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:11022020
+#FROM sconecuratedimages/sensoriant:pytorch-1.5.1-ubuntu18.04-scone5.0.0-v0.2
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:11062020
+#FROM sconecuratedimages/sensoriant:pytorch-1.5.1-ubuntu18.04-scone5.0.0-v0.4
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:11162020
+#FROM sconecuratedimages/sensoriant:pytorch-1.5.1-ubuntu18.04-scone5.0.0-v0.5
+#FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:11172020
+#FROM sconecuratedimages/sensoriant:pytorch-1.5.1-ubuntu18.04-scone5.0.0-v0.6
+FROM sensoriant.azurecr.io/priv-comp/python-3.8.1-ubuntu:11302020
+
+ADD /app/requirements.txt /requirements.txt
+
+RUN /root/miniconda/bin/pip install --no-cache-dir -r /requirements.txt && \
+    rm /requirements.txt && \
+    # remove all python cache files to ensure consistent fs state
+    find /usr/lib -name "*.pyc" -type f -delete
+
+WORKDIR /
+
+#ENTRYPOINT ["/bin/sh"]

@@ -1,0 +1,28 @@
+name: "test_policy"
+version: "0.3"
+
+services:
+  - name: test-python
+    image_name: algorithm_image    
+    command: "/root/miniconda/bin/python3 /app/test.py"
+    mrenclaves: ["0000000000000000000000000000000000000000000000000000000000000000"]
+
+images:
+  - name: algorithm_image    
+    volumes:
+        - name: encrypted_input_volume
+          path: /test-input
+          update_policy: no_rollback_protection
+
+security:
+  attestation:
+    tolerate:
+      - debug-mode
+    trusted_scone_qe_pubkeys: ["69104EF20C6676AACC9E8C291800D1B7E911E20F85B4066156EA118ACE44B8D7"]
+
+volumes:
+  - name: encrypted_input_volume
+    import:
+        session: $SENSENCRYPT_POLICY_NAME
+        volume: encrypt_output_volume
+

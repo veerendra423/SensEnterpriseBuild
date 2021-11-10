@@ -1,0 +1,55 @@
+name: $ALGORITHM_POLICY_NAME
+version: "0.3"
+
+# Access control:
+
+access_policy:
+  read:
+    - CREATOR
+    - $DATAOWNER_CREDENTIAL    
+  update:
+    - CREATOR
+
+services:
+  - name: algorithm
+    environment:
+      SCONE_ALLOW_DLOPEN: "1"
+      SCONE_HEAP: "4G"
+      SCONE_LOG: "error"
+      SCONE_FORK_OS: "1"
+      SCONE_IGNORE_SIGHUP: "1"
+    image_name: algorithm_image
+    command: $ALGORITHM_COMMAND
+    mrenclaves:
+      - "$MRENCLAVE_ALGORITHM"
+    pwd: /
+    fspf_path: /fspf.pb
+    fspf_key: "$ALGORITHM_FSPF_KEY"
+    fspf_tag: "$ALGORITHM_FSPF_TAG"
+
+security:
+  attestation:
+    tolerate: [debug-mode, software-hardening-needed]
+    ignore_advisories: ["INTEL-SA-00334"]
+    #    trusted_scone_qe_pubkeys: ["69104EF20C6676AACC9E8C291800D1B7E911E20F85B4066156EA118ACE44B8D7"]
+    trusted_scone_qe_pubkeys: ["$PLATFORM_EDDSA_KEY"]
+images:
+  - name: algorithm_image
+    volumes:
+        - name: encrypted_input_volume
+          path: /algorithm-input
+          update_policy: no_rollback_protection
+        - name: encrypted_output_volume
+          path: /algorithm-output
+          update_policy: no_rollback_protection
+
+volumes:
+  - name: encrypted_input_volume
+    import: 
+        session: $SENSENCRYPT_POLICY_NAME  
+        volume: encrypt_output_volume
+  
+  - name: encrypted_output_volume
+    import: 
+        session: $SENSDECRYPT_POLICY_NAME  
+        volume: decrypt_input_volume

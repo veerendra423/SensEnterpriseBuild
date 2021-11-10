@@ -1,0 +1,7 @@
+FROM sconecuratedimages/crosscompilers:ubuntu16.04
+RUN apt-get update && apt-get install -y \
+    bats \
+    make
+COPY . /copy_files
+WORKDIR /copy_files
+CMD sh ./run_test.sh 

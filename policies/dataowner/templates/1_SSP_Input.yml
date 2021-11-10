@@ -1,0 +1,35 @@
+name: $INPUT_POLICY_NAME
+version: "0.2"
+
+# Access control:
+#   - only the data owner (CREATOR) can read or update the session
+#   - even the data owner cannot read the session secrets (i.e., the volume key and tag)
+
+access_policy:
+  read:
+   - CREATOR
+  update:
+   - CREATOR
+
+# Service: copy_files
+#   - copies files or data from a given input directory give by argument -i
+#   - copies files or data  to an output directory (which is in this case an encrypted volume) given by argument
+#   - /input is mapped into the container as an unencrypted volume / directory
+
+services:
+  - name: input
+    image_name: input_image
+    mrenclaves: ["$MRENCLAVE_INPUT"]
+    command: ./copy_files  -i /input -o /encrypted-input
+
+images:
+  - name: input_image
+    volumes:
+      - name: encrypted_input_volume
+        path: /encrypted-input
+
+volumes:
+  # No fspf key and tag: an encrypted volume will be automatically generated
+  # on the first run
+  - name: encrypted_input_volume
+    export: $ALGORITHM_POLICY_NAME

@@ -1,0 +1,93 @@
+version: '3.4'
+services:
+    las:
+        image: $LAS_IMAGENAME:$LAS_TAG
+        devices:
+         - "/dev/isgx"
+        networks:
+          sensnet:
+    prefect:
+        image: $PREFECT_IMAGENAME:$PREFECT_TAG
+        networks:
+          sensnet:
+    SensLAS:
+        privileged: true
+        image: $SENSLAS_IMAGENAME:$SENSLAS_TAG
+        pid: "host"
+        volumes:
+            - /sys:/sys
+            - ./SensLAS:/app
+        devices:
+            - "/dev/isgx"
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLAS_PORT:$SENSLAS_PORT
+        command: /SensAttest/SensAttest -port=$SENSLAS_PORT http
+        networks:
+          sensnet:
+    ras_agent:
+       image: $SENSRAS_AGENT_IMAGENAME:$SENSRAS_AGENT_TAG
+       environment:
+         - SENSORIANT_SPIRE_TRUST_DOMAIN
+         - SENSORIANT_SPIRE_SERVER_HOSTNAME
+         - SENSORIANT_SPIRE_SERVER_PORT
+         - SENSORIANT_ATTESTATION_HOST
+         - SENSORIANT_ATTESTATION_DOCKER_PORT
+         - SENSORIANT_PLATFORM_SIGNING_KEY
+         - SENSORIANT_PLATFORM_PROVIDER
+         - RELEASE_TAG
+         - GCS_BUCKET_NAME
+         - SENSCLI_DREG
+         - LOG_LEVEL
+       volumes:
+         - ./SensRAS:/mnt/keys
+       depends_on: 
+         - SensLAS 
+       networks:
+         sensnet:
+    senscli:
+       image: $SENSCLI_IMAGENAME:$SENSCLI_TAG
+       network_mode: "host"
+       environment:
+         - GOOGLE_APPLICATION_CREDENTIALS=/opt/creds/gcp-dataset-storage-credentials.json
+         - SENSCLI_API_SERVER_PORT
+         - SENSCLI_API_DOCKER_PORT
+         - SENSCLI_DREG
+         - SENSCLI_DCRED
+         - SENSCLI_MNT
+         - SENSCLI_USE_REF
+         - SENSCLI_REF_ALGO_IMAGE
+         - SENSCLI_REF_ALGO_CREDS
+       volumes:
+         - ./credentials:/opt/creds
+         - ./SensADK/sandbox/image/sdata:/algo
+       ports:
+          - ${SENSCLI_API_SERVER_PORT}:${SENSCLI_API_DOCKER_PORT}
+       command: sensec -http ${SENSCLI_API_DOCKER_PORT}
+       #networks:
+       #  sensnet:
+    SensLLS:
+        privileged: true
+        image: $SENSLLS_IMAGENAME:$SENSLLS_TAG
+        environment:
+         - SENSLLS_HOSTNAME
+         - SENSSELF_DIGEST=$SENSLLS_DIGEST
+         - SENSSELF_HOSTALIAS=$SENSLLS_HOSTALIAS_SANDBOX
+        volumes:
+            - /sys:/sys
+            - ./SensLLS:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLLS_PORT:$SENSLLS_PORT
+        command: /SensLLS/SensLLS -httpMode=http -port=$SENSLLS_PORT -rlsApiCall=$SENSRLS_URL:$SENSRLS_MTLS_PORT/rls/v1 -rlsCertFile=/SensLLS/rlsCert.pem -rlsKeyFile=/SensLLS/rlsKey.pem
+        networks:
+          sensnet:
+networks:
+  sensnet:
+    external: true
+
+volumes:
+  secure-cloud-api-spire-platforms:

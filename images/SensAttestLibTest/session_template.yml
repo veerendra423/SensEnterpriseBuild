@@ -1,0 +1,23 @@
+name: "test-session"
+version: "0.3"
+
+services:
+  - name: test-with-shared
+    command: "./test_with_user_extension_shared -i /input -o /output -k enckey -d deckey"
+    mrenclaves: ["0000000000000000000000000000000000000000000000000000000000000000"]
+#    mrenclaves: ["3430da7fefbb032269b45efc833bca149c3c13a0a6ec0ceabdec4a894f1bf3df"]
+  - name: test-with-static
+    command: "./test_with_user_extension_shared -i /input"
+    mrenclaves: ["0000000000000000000000000000000000000000000000000000000000000000"]
+#    mrenclaves: ["3430da7fefbb032269b45efc833bca149c3c13a0a6ec0ceabdec4a894f1bf3df"]
+
+security:
+  attestation:
+    tolerate: 
+      - debug-mode
+    trusted_scone_qe_pubkeys: ["dbdac57c83b1aba86a9c1739835dd1bf4c27c4dc69978be83ae9154a9a259617"]
+#    trusted_scone_qe_pubkeys: ["7714fefad76ebfc17a244fa478bcc61b3f72940533d2ca5ab223b8579eb88c7c"]
+#    trusted_scone_qe_pubkeys: ["fd7941c3750f96d371b973d23bbb38b3b283409e2e89dc1e6358c386f90c953f"]
+#    trusted_scone_qe_pubkeys: ["69104EF20C6676AACC9E8C291800D1B7E911E20F85B4066156EA118ACE44B8D7"]
+#    trusted_scone_qe_pubkeys: ["4c65fb6b339edbf2e2fbac858621d2fe0e5f47da0872dc4571987f70544a5d30"]
+#    trusted_scone_qe_pubkeys: ["4bae1215aed070ced7f11d1ef5f2c1990a136d5ef1a35c6b62f217292332516e"]

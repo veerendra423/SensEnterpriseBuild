@@ -1,0 +1,22 @@
+version: "3.2"
+networks:
+  sensnet:
+    external: true
+services:
+  com.sensoriant.docker-registry.api:
+    image: docker-registry-api:${DOCKER_REGISTRY_API_TAG}
+    networks:
+      sensnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DOCKER_REGISTRY_API_AZURE_TOKEN
+      - DOCKER_REGISTRY_API_DOCKER_PORT
+      - DOCKER_REGISTRY_API_REGISTRY
+      - DOCKER_REGISTRY_API_SERVER_PORT
+    ports:
+      - target: ${DOCKER_REGISTRY_API_SERVER_PORT}
+        published: ${DOCKER_REGISTRY_API_DOCKER_PORT}
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"

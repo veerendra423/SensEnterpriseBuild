@@ -1,0 +1,93 @@
+files:
+    env:
+      src: staging.env
+      dest: app/.env
+services:
+  SensLAS:
+    name: SensLAS
+    source: images/SecureStreamAgent
+    target: senslas
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensRasService:
+    name: com.sensoriant.spire.agent
+    source: images/SensRAS
+    target: ras-agent
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPush:
+    name: SensGcsPush
+    source: images/SensStoragePush
+    target: sensgcspush
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPull:
+    name: SensGcsPull
+    source: images/SensStoragePull
+    target: sensgcspull
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensCASPolicies:
+    name: prepare_policies 
+    source: policies
+    target: prepare_policies
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensLLS:
+    name: SensLLS
+    source: images/SensSecureLog/Local-Logging-Service
+    target: senslls
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensPipelineAgent:
+    name:  SensPipelineAgent
+    source: images/SensPipelineAgent
+    target: senspagent 
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPushAttested_sim:
+    name: SensGcsPushAttested-sim
+    source: images/SensStoragePush
+    target: sensgcspushattested-sim
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPushAttested_hw:
+    name: SensGcsPushAttested-hw
+    source: images/SensStoragePush
+    target: sensgcspushattested-hw
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPullAttested_sim:
+    name: SensGcsPullAttested-sim
+    source: images/SensStoragePull
+    target: sensgcspullattested-sim
+    environment: config.env
+    build: true
+    push: true
+    lock: true   
+  SensGcsPullAttested_hw:
+    name: SensGcsPullAttested-hw
+    source: images/SensStoragePull
+    target: sensgcspullattested-hw
+    environment: config.env
+    build: true
+    push: true
+    lock: true   

@@ -1,0 +1,78 @@
+[database]
+path = "/etc/cas/cas.db"
+
+[api]
+api_listen = "0.0.0.0:8081"
+enclave_listen = "0.0.0.0:18765"
+
+# IAS config is only necessary if the attestation policy requires Intel
+# attestation scheme, that is for Intel or Scone attestation with non-empty
+# mrenclave whitelist.
+# Refer to https://api.trustedservices.intel.com/documents/sgx-attestation-api-spec.pdf
+# for more insight.
+[ias]
+# The 16 byte long Service Provider Identity hex-encoded.
+# You've obtained this ID when you registered with Intel's IAS Service
+spid           = "8B09FF23D890D72EE73815CD86AF9D54"
+# Linkability setting of the service provider account (configured during
+# registration with IAS)
+linkable_quotes     = true
+# User authentication for IAS API Rev. 5 using the Ocp-Apim-Subscription-Key HTTP Header
+sp_key          = "8c50914cc8484f65bcbfbf361b6b24de"
+# Base URL of the IAS service.
+# This setting is optional. If omitted the dev environments default url will be used.
+# Note, that this url is different for Rev. 4 and Rev. 5 - be sure to use the correct one.
+base_uri         = "https://api.trustedservices.intel.com/sgx/dev/attestation/v3"
+# User authentication using IAS API Rev. 4 using a client certificate
+# Will be ignored if `sp_key` (Rev. 5 authentication) is provided
+[ias.identity]
+cert = "ias_client.pem"
+key = "ias_client.key"
+
+[attestation]
+# The attestation policy determines how enclaves are attested. Three policies
+# are supported:
+# "Without" => Enclaves are not attested
+# "Intel" => Enclaves are attested using Intel's attestation scheme
+# "Scone" => Enclave are attested using SCONE attestation
+policy = "Scone"
+# List of trusted public keys for SCONE attestation.
+# SCONE quotes signed with one of this public keys are always trusted by CAS.
+# The list has to contain string with the hex-encoded public keys. The keys
+# shall be 32 bytes in size.
+scone_qe_pubkey_whitelist = []
+# List of trusted MRENCLAVE hashs for SCONE attestation.
+# When CAS receives a SCONE quote signed with an unknown public key it will use
+# Intel's attestation mechanism to attest the SCONE QE learning its MRENCLAVE
+# hash. Only enclaves with hash contained in this list will be trusted.
+# The list has to contain string with the hex-encoded hash values. The values
+# shall be 32 bytes in size.
+# If this list is empty SCONE attestation will only accept quotes from
+# whitelisted public keys.
+scone_qe_mrenclave_whitelist = [
+    # quoting enclave built with sdk v2.5 (debug mode)
+    "C2CA1D8166C45EB6063764413CDFFA8D9BBAB44CE6CDA6837000D703368F338B",
+    # quoting enclave built with sdk v2.5 (production mode)
+    "5E75B3ACB9FC91775A88006D8CA97B71E528E45552E97466C47AC07478572F69",
+    # quoting enclave built with sdk v2.7.1 (debug mode)
+    "D9A05D04E07CD75F4251D41A4D7F0FCA63BF392A19BEDE5C69A5BB60A94E376F",
+    # quoting enclave built with sdk v2.7.1 (production mode)
+    "D0A032987D29A348182F29736CBA08BC18117CDA1CB8DCBD6E437F085B51CCED",
+    # quoting enclave build with intel sdk v2.8
+    '8F9427945E4ECA88CB9B6867B4C4EF781F2F9C0A02FF8BE717B6ACFE17086615',
+]
+
+# Should the CAS trust remote platforms for which Intel IAS reports GroupOutOfDate?
+# From the IAS 2.0 Spec:
+# GROUP_OUT_OF_DATE – The EPID signature of the ISV
+# enclave QUOTE has been verified correctly, but the TCB
+# level of SGX platform is outdated. The platform has not
+# been identified as compromised and thus it is not revoked.
+# It is up to the Service Provider to decide whether or not to
+# trust the content of the QUOTE.
+trust_group_out_of_date = true
+# Should the CAS trust remote platforms for which Intel IAS reports ConfigurationNeeded?
+# This status is reported for attestation requests originating from SGX enabled
+# platforms with the required microcode and SW update, but with hyperthreading
+# enabled in the BIOS.
+trust_configuration_needed = true

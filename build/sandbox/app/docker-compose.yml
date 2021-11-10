@@ -1,0 +1,20 @@
+version: '3.2'
+services:
+    prepare_policies:
+        image: $PREPARE_POLICIES_IMAGENAME:$PREPARE_POLICIES_TAG
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+        command: bash -c "/policies/upload_policies.sh"
+        volumes:
+          - ./config.yml:/conf/config.yml
+          - ./keys:/root/.cas
+        networks:
+          sensnet:
+
+networks:
+  sensnet:
+    external: true
+
+
+

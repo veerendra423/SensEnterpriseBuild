@@ -1,0 +1,29 @@
+name: $SENSGCSPULL_POLICY_NAME
+version: "0.3"
+
+# Access control:
+#   - only the data owner (CREATOR) can read or update the session
+#   - even the data owner cannot read the session secrets (i.e., the volume key and tag)
+
+access_policy:
+  read:
+   - CREATOR
+  update:
+   - CREATOR
+
+services:
+  - name: sensgcspull
+    image_name: sensgcspull_image    
+    command: ["/opt/sensoriant/gcs/pull/bin/sensGcsPull", "-b", "$PULL_BUCKET_NAME", "-o", "$PULL_OUTPUT_PATH", "-p", "$PULL_OBJECT_PREFIX"]
+    mrenclaves: ["$MRENCLAVE_SENSGCSPULL"]
+    environment:
+            SENSORIANT_STORAGE_CREDS: $PULL_STORAGE_CREDENTIALS
+            SENSORIANT_STORAGE_PROVIDER: $PULL_STORAGE_PROVIDER
+images:
+  - name: sensgcspull_image    
+
+security:
+  attestation:
+    tolerate: [debug-mode, software-hardening-needed]
+    ignore_advisories: ["INTEL-SA-00334"]
+    trusted_scone_qe_pubkeys: ["$PLATFORM_EDDSA_KEY"]

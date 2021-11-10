@@ -1,0 +1,17 @@
+diff --git a/gsgx.c b/gsgx.c
+index 0f71e94..d42ad1c 100644
+--- a/gsgx.c
++++ b/gsgx.c
+@@ -30,8 +30,10 @@ static void __enable_fsgsbase(void* v) {
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
+     write_cr4(read_cr4() | X86_CR4_FSGSBASE);
+ #else
+-    cr4_set_bits(X86_CR4_FSGSBASE);
+-    __write_cr4(__read_cr4() | X86_CR4_FSGSBASE);
++    //cr4_set_bits(X86_CR4_FSGSBASE);
++    //__write_cr4(__read_cr4() | X86_CR4_FSGSBASE);
++	u64 val = __read_cr4() | X86_CR4_FSGSBASE;
++	asm volatile("mov %0,%%cr4": "+r" (val));
+ #endif
+ }
+ 

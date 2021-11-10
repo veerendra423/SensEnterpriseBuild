@@ -1,0 +1,160 @@
+version: '3.2'
+services:
+#    las:
+#        image: sensoriant.azurecr.io/priv-comp/las4.2.1:$LAS_TAG
+#        devices:
+#         - "/dev/isgx"
+#    cas:
+#        # This version of CAS is needed for Native Attestation
+#        image: sensoriant.azurecr.io/priv-comp/cas4.2.1:09302020
+#        #image: sensoriant.azurecr.io/priv-comp/cas4.2.1:$CAS_TAG
+#        command: cas -c /etc/cas/cas.toml
+##        devices:
+##         - "/dev/isgx"
+#        volumes:
+#         - ./cas.toml:/etc/cas/cas.toml
+##        depends_on:
+##         - las
+    SensEncrypt:
+        build:
+            context: images/SensEncrypt
+        image: sensoriant.azurecr.io/nference/sensencrypt:$SENSENCRYPT_TAG
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /encrypt-input/ -o /encrypt-output -k $SENSENCRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/encrypt-input:/encrypt-input
+         - ./volumes/encrypt-output:/encrypt-output
+    algorithm:
+        build:
+            context: images/PassthruAlgorithm
+        image: sensoriant.azurecr.io/nference/passthrualgorithm:$ALGORITHM_TAG
+        environment:
+         - SCONE_MODE=sim
+#         - SCONE_VERSION=1
+#         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+#         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=algorithm_policy/algorithm
+         - "SENSENCRYPT_FSPF_KEY=${SENSENCRYPT_FSPF_KEY}"
+         - "SENSDECRYPT_FSPF_KEY=${SENSDECRYPT_FSPF_KEY}"
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+         - ./images/PassthruAlgorithm/:/app
+#        command: /copy_files -i /algorithm-input/ -o /algorithm-output -k $SENSENCRYPT_FSPF_KEY -d $SENSDECRYPT_FSPF_KEY
+        command: |
+                 sh -c '
+                 set -x
+                 cd /app/
+                 SCONE_SHARED=yes scone-gcc ./copy_files.c ./libsensattest.so -o copy_files
+                 echo "${CAS_IP_ADDR} cas" >> /etc/hosts
+                 #./copy_files -i /algorithm-input -o /algorithm-output -k $SENSENCRYPT_FSPF_KEY -d $SENSDECRYPT_FSPF_KEY
+                 ./copy_files -i /algorithm-input -o /algorithm-output
+                 '
+    SensDecrypt:
+        build:
+            context: images/SensDecrypt
+        image: sensoriant.azurecr.io/nference/sensdecrypt:$SENSDECRYPT_TAG
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=7
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /decrypt-input/ -o /decrypt-output -k $SENSDECRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/decrypt-input:/decrypt-input
+         - ./volumes/decrypt-output:/decrypt-output
+    prepare_policies:
+        build:
+            context: policies/
+        image: sensoriant.azurecr.io/nference/prepare_policies:$PREPARE_POLICIES_TAG
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+        command: bash -c "/policies/upload_policies.sh"
+        volumes:
+            - ./config.yml:/conf/config.yml
+            - ./keys:/root/.cas
+            - ./policies:/policies
+#            - ./helper_scripts:/helper_scripts
+    SensIpfsPush:
+        build:
+            context: images/SensIpfsPush
+        image: sensoriant.azurecr.io/nference/sensipfspush:$SENSIPFSPUSH_TAG
+        environment:
+            - "IPFS_IP_ADDR=${IPFS_IP_ADDR}"
+            - "IPFS_PORT=${IPFS_PORT}"
+        command: bash -c "/start"
+    SensIpfsPull:
+        build:
+            context: images/SensIpfsPull
+        image: sensoriant.azurecr.io/nference/sensipfspull:$SENSIPFSPULL_TAG
+        environment:
+            - "IPFS_IP_ADDR=${IPFS_IP_ADDR}"
+            - "IPFS_PORT=${IPFS_PORT}"
+        command: bash -c "/start"
+    SensLAS:
+        privileged: true
+        build:
+            context: images/SensLAS
+        image: sensoriant.azurecr.io/nference/senslas:$SENSLAS_TAG
+        volumes:
+            - /sys:/sys
+            - ./images/SensLAS:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLAS_PORT:$SENSLAS_PORT
+        command: /SensAttest/SensAttest -port=$SENSLAS_PORT http
+    SensAttestLib:
+        build:
+            context: images/SensAttestLib
+        image: sensoriant.azurecr.io/nference/sensattestlib:$SENSATTESTLIB_TAG
+        environment:
+         - SCONE_MODE=sim
+        command: |
+                 sh -c '
+                 set -ex
+                 cd /app
+                 scone-gcc user_extension.c httpclient.c jsmn.c -shared -o libsensattest.so
+                 '
+        volumes:
+         - ./images/SensAttestLib:/app
+    SensAttestLibTest:
+        build:
+            context: images/SensAttestLibTest
+        image: sensoriant.azurecr.io/nference/sensattestlibtest:devel
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_MODE=sim
+#         - SCONE_CONFIG_ID=test_policy/test-with-shared
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+        command: |
+                 sh -c '
+                 set -ex
+                 cd /app/
+                 SCONE_SHARED=yes scone-gcc ./test.c ./libsensattest.so -o test_with_user_extension_shared
+                 echo "${CAS_IP_ADDR} cas" >> /etc/hosts
+                 #scone session create --only_for_testing-disable-attestation-verification -c cas --use-env ./session_template.yml
+                 SHARED_RET=0
+                 SCONE_CONFIG_ID="test-session/test-with-shared" ./test_with_user_extension_shared $$1 $$2 $$3 $$4 $$5 $$6 $$7 $$8 || SHARED_RET=$$?
+                 #./test_with_user_extension_shared $$1 $$2 $$3 $$4 $$5 $$6 $$7 $$8 || SHARED_RET=$$?
+                 #./test_with_user_extension_shared || SHARED_RET=$$?
+                 test $$SHARED_RET -eq 23
+                 '
+        volumes:
+         - ./images/SensAttestLibTest:/app
+        depends_on:
+         - SensLAS
+
+#                 SCONE_CONFIG_ID="test-session/test-with-shared" ./copy_files -i /algorithm-input/ -o /algorithm-output -k ${SENSENCRYPT_FSPF_KEY} -d ${SENSDECRYPT_FSPF_KEY} 

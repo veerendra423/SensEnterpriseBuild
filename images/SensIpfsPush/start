@@ -1,0 +1,10 @@
+#!/bin/bash
+if [ "$MODE" = "pipeline" ]
+then
+    echo "Running in pipeline mode"
+    prefect backend server
+    python3 senspush.py
+else
+    ./encrypt -d -ne -k=nokey -i=/sensipfspush-input/ -o=$IPFS_DIR
+fi
+

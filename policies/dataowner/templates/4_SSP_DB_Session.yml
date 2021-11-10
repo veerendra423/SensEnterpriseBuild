@@ -1,0 +1,98 @@
+name: $DB_POLICY_NAME
+version: "0.2"
+
+# Access control:
+#   - only the data owner (CREATOR) can read or update the session
+#   - even the data owner cannot read the session secrets (i.e., the volume key and tag)
+
+access_policy:
+  read:
+   - CREATOR
+  update:
+   - CREATOR
+
+# Service: mariadb
+# https://mariadb.com/kb/en/securing-connections-for-client-and-server/
+
+services:
+  - name: db
+    image_name: db_image
+    command: mysqld --innodb-use-native-aio=0
+    mrenclaves: ["$MRENCLAVE_MYSQLD"]
+    pwd: /
+    environment:
+      MYSQL_ROOT_PASSWORD: "$$SCONE::MYSQL_ROOT_PASSWORD$$"
+      MYSQL_ALLOW_EMPTY_PASSWORD: ""  # Empty means 'false', anything else 'true'
+      MYSQL_RANDOM_ROOT_PASSWORD: ""  # Empty means 'false', anything else 'true'
+
+# We inject the content of MariaDB cofiguration file including
+# the certificate of the MariaDB as well as the CA certificate of the session
+images:
+  - name: db_image
+    injection_files:
+       - path: /etc/my.cnf
+         content: |
+           # This group is read both both by the client and the server
+           # use it for options that affect everything
+           [client-server]
+           # This group is read by the server
+           [mysqld]
+           user=mysql
+           skip-host-cache
+           skip-name-resolve
+           # Disabling symbolic-links is recommended to prevent assorted security risks
+           symbolic-links=0
+           # Network
+           bind-address = 0.0.0.0
+           port = 3306
+           # Encryption parameters
+           plugin_load_add = file_key_management
+           file_key_management_filename = /etc/keys.txt
+           file_key_management_encryption_algorithm = aes_cbc
+           encrypt_binlog = 1
+           innodb_encrypt_tables = ON
+           innodb_encrypt_log = ON
+           innodb_encryption_threads = 4
+           innodb_encryption_rotate_key_age = 0 # Do not rotate key
+           # Enabling TLS for MariaDB server
+           ssl
+           ssl_cert = /etc/server.crt
+           ssl_key = /etc/server.key
+           ssl_ca = /etc/mariadb-ca.crt
+           # Enabling TLS for MariaDB clients
+           [client]
+           ssl_cert = /etc/client.crt
+           ssl_key = /etc/client.key
+           ssl-verify-server-cert
+       - path: /etc/keys.txt # key to encrypt MariaDB tables
+         content: 1;D5C2C29814279240DD6BA4542F39B97B;107666757DC1E458232D881A183219E7F9042F6A96A78E748BF7EA90C98BB058
+       - path: /etc/mariadb-ca.crt
+         content: $$SCONE::session-ca-certificate.chain$$ # Export this session's CA certificate & chain
+       - path: /etc/server.crt
+         content: $$SCONE::mariadb.crt$$ # export MariaDB server certificate
+       - path: /etc/server.key
+         content: $$SCONE::mariadb.key$$
+       - path: /etc/client.crt
+         content: $$SCONE::MARIADB_CLIENT_CERT.crt$$ # export client certificate
+       - path: /etc/client.key
+         content: $$SCONE::MARIADB_CLIENT_CERT.key$$ # export client key
+
+# Export client credentials from DB session.
+# The client CA is the session CA of this session
+secrets:
+  - name: MYSQL_ROOT_PASSWORD # automatically generate MYSQL_ROOT_PASSWORD cannot be seen by anyone at all
+    kind: ascii
+    size: 32
+  - name: mariadb # automatically generate MariaDB server certificate
+    kind: x509
+  - name: MARIADB_CLIENT_CERT # automatically generate client certificate
+    kind: x509
+    export:
+      - $UPLOAD_POLICY_NAME # export client cert/key to upload session
+      - "$ALGORITHM_POLICY_NAME:$ALGORITHM_POLICY_DIGEST" # export client cert/key to sensflask session
+      - "$SENSFLASK_POLICY_NAME:$SENSFLASK_POLICY_DIGEST" # export client cert/key to sensflask session
+  - name: MARIADB_CA_CERT # export session CA certificate as MariaDB CA certificate
+    kind: session-ca
+    export:
+      - $UPLOAD_POLICY_NAME # export the session CA certificate to upload session
+      - $SENSFLASK_POLICY_NAME # export the session CA/MariaDB CA certificate to sensflask session

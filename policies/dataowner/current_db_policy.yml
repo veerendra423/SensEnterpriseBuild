@@ -1,0 +1,56 @@
+---
+version: "0.2"
+name: database_policy
+predecessor: ~
+images:
+  - name: db_image
+    injection_files:
+      - path: /etc/my.cnf
+        content: "# This group is read both both by the client and the server\n# use it for options that affect everything\n[client-server]\n# This group is read by the server\n[mysqld]\nuser=mysql\nskip-host-cache\nskip-name-resolve\n# Disabling symbolic-links is recommended to prevent assorted security risks\nsymbolic-links=0\n# Network\nbind-address = 0.0.0.0\nport = 3306\n# Encryption parameters\nplugin_load_add = file_key_management\nfile_key_management_filename = /etc/keys.txt\nfile_key_management_encryption_algorithm = aes_cbc\nencrypt_binlog = 1\ninnodb_encrypt_tables = ON\ninnodb_encrypt_log = ON\ninnodb_encryption_threads = 4\ninnodb_encryption_rotate_key_age = 0 # Do not rotate key\n# Enabling TLS for MariaDB server\nssl\nssl_cert = /etc/server.crt\nssl_key = /etc/server.key\nssl_ca = /etc/mariadb-ca.crt\n# Enabling TLS for MariaDB clients\n[client]\nssl_cert = /etc/client.crt\nssl_key = /etc/client.key\nssl-verify-server-cert\n"
+      - path: /etc/keys.txt
+        content: 1;D5C2C29814279240DD6BA4542F39B97B;107666757DC1E458232D881A183219E7F9042F6A96A78E748BF7EA90C98BB058
+      - path: /etc/mariadb-ca.crt
+        content: "$$SCONE::session-ca-certificate.chain$$"
+      - path: /etc/server.crt
+        content: "$$SCONE::mariadb.crt$$"
+      - path: /etc/server.key
+        content: "$$SCONE::mariadb.key$$"
+      - path: /etc/client.crt
+        content: "$$SCONE::MARIADB_CLIENT_CERT.crt$$"
+      - path: /etc/client.key
+        content: "$$SCONE::MARIADB_CLIENT_CERT.key$$"
+secrets:
+  - name: MYSQL_ROOT_PASSWORD
+    kind: ascii
+    size: 32
+  - name: mariadb
+    kind: x509
+  - name: MARIADB_CLIENT_CERT
+    export:
+      - upload_policy
+      - "algorithm_policy:f9af1525770c2ead3438b64cb2e019cce0578323ec96dcfd78071d5f77203f5d"
+      - "sensflask_policy:f4a3545b37d0b80b6e97f48ce16cf940ba5c1ccd6c5cc1d11e9cef73752576e9"
+    kind: x509
+  - name: MARIADB_CA_CERT
+    export:
+      - upload_policy
+      - algorithm_policy
+      - sensflask_policy
+    kind: session-ca
+services:
+  - name: db
+    image_name: db_image
+    mrenclaves:
+      - 4589d69f384b3cd22cc599910af2b35113ddd061cc1a3eb92a2d4c3564d36e2d
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: ""
+      MYSQL_RANDOM_ROOT_PASSWORD: ""
+      MYSQL_ROOT_PASSWORD: "$$SCONE::MYSQL_ROOT_PASSWORD$$"
+    command: mysqld --innodb-use-native-aio=0
+    pwd: /
+    persistency: None
+access_policy:
+  read:
+    - CREATOR
+  update:
+    - CREATOR

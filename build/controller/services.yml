@@ -1,0 +1,103 @@
+files:
+    env:
+      src: staging.env
+      dest: app/.env
+services:
+  SensRasService:
+    name: com.sensoriant.spire.server
+    source: images/SensRAS
+    target: ras-server
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensDockerService:
+    name: com.sensoriant.docker-registry.api
+    source: images/SensDockerService
+    target: docker-registry-api
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensCloudApiService:
+    name: com.sensoriant.secure-cloud.api
+    source: images/SensCloudApi
+    target: secure-cloud-api
+    onboot: yes
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  nginx:
+    name: nginx 
+    source: images/nginx
+    build: false
+    push: false
+    lock: false
+  SensCliService:
+    name: com.sensoriant.senscli 
+    source: images/SensCLI
+    target: scli
+    onboot: yes
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensMariaDbService:
+    name: com.mariadb.server
+    onboot: yes
+    build: false
+    push: false
+    lock: false
+  CAS:
+    name: com.scontain.cas
+    onboot: yes
+    build: false
+    push: false
+    lock: false
+  LAS:
+    name:  com.scontain.las 
+    onboot: yes
+    build: false
+    push: false
+    lock: false
+  SensLLS:
+    name: SensLLS
+    source: images/SensSecureLog/Local-Logging-Service
+    target: senslls
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensRLS:
+    name: SensRLS
+    source: images/SensSecureLog/Remote-Logging-Service
+    target: sensrls
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensPipelineMgr:
+    name: SensPipelineMgr 
+    source: images/SensPipelineMgr
+    target: senspmgr
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensPipelineOrch:
+    name: SensPipelineOrch
+    source: images/SensPipelineOrch
+    target: sensporch
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  SensArchiver:
+    name: SensArchiver
+    source: images/SensArchiver
+    target: sensarchiver
+    environment:  config.env
+    build: true
+    push: true
+    lock: true

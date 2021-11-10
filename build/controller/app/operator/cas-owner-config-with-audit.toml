@@ -1,0 +1,13 @@
+[ias]
+spid            = "32C2D32CD4F1C873625BBE65D973A702"
+linkable_quotes = true
+sp_key          = "1c8b569cffd94a85ad11342bfad5a3ad"
+
+[dcap]
+subscription_key = "aecd5ebb682346028d60c36131eb2d92"
+
+[audit_log]
+mode = "signed"
+sink = "network"
+url = "http://sensrls:9202/rls/v1/saveLogScone"
+

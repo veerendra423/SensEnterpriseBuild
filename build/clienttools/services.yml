@@ -1,0 +1,62 @@
+files:
+   safectl:
+    src: images/Safectl/dist
+    dest: Safectl
+services:
+  sensencrypt:
+    name: com.sensoriant.sensencrypt
+    source: images/SensEncrypt
+    target: sensencrypt
+    environment:  config.env
+    build: true
+    push: true
+    lock: true
+  sensdecrypt:
+    name: com.sensoriant.sensdecrypt
+    source: images/SensDecrypt
+    target: sensdecrypt
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensCliService:
+    name: com.sensoriant.senscli
+    source: images/SensCLI
+    target: scli
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPush:
+    name: SensGcsPush
+    source: images/SensStoragePush
+    target: sensgcspush
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  SensGcsPull:
+    name: SensGcsPull
+    source: images/SensStoragePull
+    target: sensgcspull
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+  Safectl:
+    name: Safectl
+    source: images/Safectl
+    target: safectl
+    environment: config.env
+    build: true
+    push: false
+    lock: false
+  SensAuditLogVerifier:
+    name: SensAuditLogVerifier
+    source: images/SensAuditLogVerifier
+    target: sensauditlogverifier
+    environment: config.env
+    build: true
+    push: true
+    lock: true
+

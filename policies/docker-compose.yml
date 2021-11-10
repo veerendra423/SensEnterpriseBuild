@@ -1,0 +1,18 @@
+version: "3.4"
+networks:
+  sensnet:
+    external: true
+services:
+    prepare_policies:
+        build:
+            context: ./ 
+        image: sensoriant.azurecr.io/nference/prepare_policies:$PREPARE_POLICIES_TAG
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+        command: bash -c "/policies/upload_policies.sh"
+        volumes:
+            - ./config.yml:/conf/config.yml
+            - ./keys:/root/.cas
+            - ./policies:/policies
+

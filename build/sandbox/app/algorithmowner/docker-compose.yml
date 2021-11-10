@@ -1,0 +1,261 @@
+version: '3.2'
+services:
+    algorithm-sim:
+        image: $ALGORITHM_IMAGE
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+         - SCONE_MODE=sim
+#         - SCONE_VERSION=1
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1           
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+         - ./libattestation-python.so:/opt/scone/lib/libattestation.so
+        command: $ALGORITHM_COMMAND
+        networks:
+          sensnet:
+    algorithm-hw:
+        image: $ALGORITHM_IMAGE
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+         - SCONE_MODE=hw
+#         - SCONE_VERSION=1
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+#         - "SENSLAS_PORT=${SENSLAS_PORT}"
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+#         - ./images/NferenceAlgorithm/libsensattest.so:/opt/scone/lib/libattestation.so
+        command: $ALGORITHM_COMMAND
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"
+        networks:
+          sensnet:
+    algorithm-gpu:
+        image: $ALGORITHM_IMAGE
+        shm_size: '2gb'
+        pid: "host"
+        runtime: nvidia
+        environment:
+         - NVIDIA_VISIBLE_DEVICES=all
+         - SCONE_MODE=sim
+         - SCONE_VERSION=1
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+           #- SCONE_CONFIG_ID=gpu-algorithm_policy/algorithm
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+         - ./libattestation.so.python:/opt/scone/lib/libattestation.so
+        command: $ALGORITHM_COMMAND
+        devices:
+         - "/dev/nvidia-uvm"
+         - "/dev/nvidia-uvm-tools"
+         - "/dev/nvidia0"
+         - "/dev/nvidiactl"
+         - "/dev/nvidia-modeset"
+        networks:
+          sensnet:
+    SensGcsPush:
+        image: $SENSGCSPUSH_IMAGENAME:$SENSGCSPUSH_TAG
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PUSH_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER              
+        command: bash -c "/opt/sensoriant/gcs/push/start.sh"
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./datasets:/opt/sensoriant/gcs/push/datasets
+        networks:
+          sensnet:
+    SensGcsPull:
+        image: $SENSGCSPULL_IMAGENAME:$SENSGCSPULL_TAG
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PULL_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER
+        command: bash -c "/opt/sensoriant/gcs/pull/start.sh"
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./datasets:/opt/sensoriant/gcs/pull/datasets
+        networks:
+          sensnet:
+    SensGcsPushAttested-sim:
+        image: $SENSGCSPUSHATTESTED_SIM_IMAGENAME:$SENSGCSPUSH_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PUSH_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=sim
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIB=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-SensGcsPush_policy/sensgcspush
+            - "SENSLAS_PORT=${SENSLAS_PORT}"
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER
+        command: /opt/sensoriant/gcs/push/bin/sensGcsPush -b $GCS_BUCKET_NAME -i $GCS_INPUT_PATH -p $GCS_PUSH_OBJECT_PREFIX
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./datasets:/opt/sensoriant/gcs/push/datasets
+        networks:
+          sensnet:
+    SensGcsPushAttested-hw:
+        image: $SENSGCSPUSHATTESTED_HW_IMAGENAME:$SENSGCSPUSH_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PUSH_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=hw
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIB=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-SensGcsPush_policy/sensgcspush
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER
+        command: /opt/sensoriant/gcs/push/bin/sensGcsPush -b $GCS_BUCKET_NAME -i $GCS_INPUT_PATH -p $GCS_PUSH_OBJECT_PREFIX
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./datasets:/opt/sensoriant/gcs/push/datasets
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"
+        networks:
+          sensnet:
+    SensGcsPullAttested-sim:
+        image: $SENSGCSPULLATTESTED_SIM_IMAGENAME:$SENSGCSPULL_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PULL_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=sim
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIB=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-SensGcsPull_policy/sensgcspull
+            - "SENSLAS_PORT=${SENSLAS_PORT}"
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER
+        command: /opt/sensoriant/gcs/pull/bin/sensGcsPull -b $GCS_BUCKET_NAME -o $GCS_OUTPUT_PATH -p $GCS_PULL_OBJECT_PREFIX
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./datasets:/opt/sensoriant/gcs/pull/datasets
+        networks:
+          sensnet:
+    SensGcsPullAttested-hw:
+        image: $SENSGCSPULLATTESTED_HW_IMAGENAME:$SENSGCSPULL_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX=${GCS_PULL_OBJECT_PREFIX}
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=hw
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIB=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-SensGcsPull_policy/sensgcspull
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+            - AZURE_STORAGE_ACCOUNT
+            - AZURE_STORAGE_ACCESS_KEY
+            - SENSORIANT_STORAGE_PROVIDER
+        command: /opt/sensoriant/gcs/pull/bin/sensGcsPull -b $GCS_BUCKET_NAME -o $GCS_OUTPUT_PATH -p $GCS_PULL_OBJECT_PREFIX
+
+        volumes:
+            - ../operator/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./datasets:/opt/sensoriant/gcs/pull/datasets
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"
+        networks:
+          sensnet:
+networks:
+  sensnet:
+    external: true
+

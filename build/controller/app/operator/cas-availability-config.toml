@@ -1,0 +1,10 @@
+[database]
+path = "/etc/cas/cas.db"
+
+[api]
+api_listen = "0.0.0.0:8081"
+enclave_listen = "0.0.0.0:18765"
+
+[audit_log]
+file_path = "./cas/cas_audit.log" # <- change this if you prefer another path
+

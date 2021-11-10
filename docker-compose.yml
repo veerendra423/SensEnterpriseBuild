@@ -1,0 +1,542 @@
+version: '3.2'
+services:
+    las:
+        image: $LAS_IMAGENAME:$LAS_TAG
+        devices:
+         - "/dev/isgx"
+    SensEncrypt:
+        build:
+            context: images/SensEncrypt
+        image: $SENSENCRYPT_IMAGENAME:$SENSENCRYPT_TAG
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /encrypt-input/ -o /encrypt-output -k $SENSENCRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/encrypt-input:/encrypt-input
+         - ./volumes/encrypt-output:/encrypt-output
+    SensDecrypt:
+        build:
+            context: images/SensDecrypt
+        image: $SENSDECRYPT_IMAGENAME:$SENSDECRYPT_TAG
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=7
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /decrypt-input/ -o /decrypt-output -k $SENSDECRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/decrypt-input:/decrypt-input
+         - ./volumes/decrypt-output:/decrypt-output
+    prepare_policies:
+        build:
+            context: policies/
+        image: $PREPARE_POLICIES_IMAGENAME:$PREPARE_POLICIES_TAG
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+        command: bash -c "/policies/upload_policies.sh"
+        volumes:
+            - ./config.yml:/conf/config.yml
+            - ./keys:/root/.cas
+            - ./policies:/policies
+#            - ./helper_scripts:/helper_scripts
+    SensGcsPush:
+        build:
+            context: images/SensGcsPush
+        image: $SENSGCSPUSH_IMAGENAME:$SENSGCSPUSH_TAG
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+        command: bash -c "/opt/sensoriant/gcs/push/start.sh"
+        volumes:
+            - ./images/SensGcsPush/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./images/SensGcsPush/datasets:/opt/sensoriant/gcs/push/datasets
+            - ./images/SensGcsPush/filesToBucket:/opt/sensoriant/gcs/push/filesToBucket
+    SensGcsPull:
+        build:
+            context: images/SensGcsPull
+        image: $SENSGCSPULL_IMAGENAME:$SENSGCSPULL_TAG
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+        command: bash -c "/opt/sensoriant/gcs/pull/start.sh"
+        volumes:
+            - ./images/SensGcsPull/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./images/SensGcsPull/datasets:/opt/sensoriant/gcs/pull/datasets
+            - ./images/SensGcsPull/filesFromBucket:/opt/sensoriant/gcs/pull/filesFromBucket
+    SensIpfsPush:
+        build:
+            context: images/SensIpfsPush
+        image: $SENSIPFSPUSH_IMAGENAME:$SENSIPFSPUSH_TAG
+        environment:
+            - "IPFS_IP_ADDR=${IPFS_IP_ADDR}"
+            - "IPFS_PORT=${IPFS_PORT}"
+        command: bash -c "/start"
+    SensIpfsPull:
+        build:
+            context: images/SensIpfsPull
+        image: $SENSIPFSPULL_IMAGENAME:$SENSIPFSPULL_TAG
+        environment:
+            - "IPFS_IP_ADDR=${IPFS_IP_ADDR}"
+            - "IPFS_PORT=${IPFS_PORT}"
+        command: bash -c "/start"
+    SensLAS:
+        privileged: true
+        build:
+            context: images/SecureStreamAgent
+        image: $SENSLAS_IMAGENAME:$SENSLAS_TAG
+        pid: "host"
+        volumes:
+            - /sys:/sys
+            - ./images/SecureStreamAgent:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLAS_PORT:$SENSLAS_PORT
+        command: /SensAttest/SensAttest -port=$SENSLAS_PORT http
+    SensAttestLibPython:
+        build:
+            context: images/SensAttestLib
+            dockerfile: Dockerfile.python
+        image: sensoriant.azurecr.io/priv-comp/sensattestlibpython:$SENSATTESTLIB_TAG
+        environment:
+         - SCONE_MODE=sim
+        volumes:
+         - ./images/SensAttestLib:/app
+        command: cp /build/libattestation-python.so /app
+    SensAttestLibGo:
+        build:
+            context: images/SensAttestLib
+            dockerfile: Dockerfile.go
+        image: sensoriant.azurecr.io/priv-comp/sensattestlibgo:$SENSATTESTLIB_TAG
+        environment:
+         - SCONE_MODE=sim
+        volumes:
+         - ./images/SensAttestLib:/app
+        command: cp /build/libattestation-go.so /app
+    SensAttestLibTest:
+        build:
+            context: images/SensAttestLibTest
+        image: sensoriant.azurecr.io/priv-comp/sensattestlibtest:devel
+        environment:
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_MODE=sim
+         - SCONE_CONFIG_ID=test_policy/test-python
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+        command: |
+                 bash -c "
+                 set -ex
+                 cd /app/
+                 #SCONE_SHARED=yes scone-gcc ./test.c ./libsensattest.so -o test_with_user_extension_shared
+                 echo \"${CAS_IP_ADDR} cas\" >> /etc/hosts
+                 #SHARED_RET=0
+                 #SCONE_CONFIG_ID=\"test_policy/test-with-shared\" ./test_with_user_extension_shared $$1 $$2 $$3 $$4 $$5 $$6 $$7 $$8 || SHARED_RET=$$?
+                 #./test_with_user_extension_shared $$1 $$2 $$3 $$4 $$5 $$6 $$7 $$8 || SHARED_RET=$$?
+                 #./test_with_user_extension_shared || SHARED_RET=$$?
+                 #test $$SHARED_RET -eq 23
+                 python3 test.py
+                 "
+        volumes:
+         - ./volumes/test-input:/test-input                
+         - ./images/SensAttestLibTest:/app
+         - ./images/SensAttestLibTest/libsensattest.so:/opt/scone/lib/libattestation.so
+        depends_on:
+         - SensLAS
+    ras_server:
+        image: $SENSRAS_SERVER_IMAGENAME:$SENSRAS_SERVER_TAG
+        build:
+          context: images/SensRAS 
+          dockerfile: Dockerfile
+          target: spire-server
+        environment:
+          - SENSORIANT_SPIRE_TRUST_DOMAIN
+          - SENSORIANT_SPIRE_SERVER_PORT
+          - SENSORIANT_SPIRE_SERVER_PLATFORM_NAME_WHITELIST
+          - SENSORIANT_SPIRE_SERVER_PLATFORM_MEASUREMENT_WHITELIST
+          - RELEASE_TAG
+          - GCS_BUCKET_NAME
+          - SENSCLI_DREG
+          - LOG_LEVEL
+          - MARIADB_HOST
+          - MARIADB_DOCKER_PORT
+          - MYSQL_DATABASE
+          - MYSQL_USER
+          - MYSQL_PASSWORD
+        ports:
+          - target: ${SENSORIANT_SPIRE_SERVER_PORT}
+            published: ${SENSORIANT_SPIRE_SERVER_PORT}
+        volumes:
+          - secure-cloud-api-spire-platforms:/mnt/platforms
+          # - server-agent-join-tokens:/mnt/join-tokens
+        depends_on: 
+         - SensMariaDb
+    ras_agent:
+        image: $SENSRAS_AGENT_IMAGENAME:$SENSRAS_AGENT_TAG
+        build:
+          context: images/SensRAS 
+          dockerfile: Dockerfile
+          target: spire-agent
+        environment:
+          - SENSORIANT_SPIRE_TRUST_DOMAIN
+          - SENSORIANT_SPIRE_SERVER_HOSTNAME
+          - SENSORIANT_SPIRE_SERVER_PORT
+          - SENSORIANT_ATTESTATION_HOST
+          - SENSORIANT_ATTESTATION_DOCKER_PORT
+          - SENSORIANT_PLATFORM_SIGNING_KEY
+          - SENSORIANT_LAS_RESPONSE_VERSION
+          - SENSORIANT_PLATFORM_PROVIDER
+          - RELEASE_TAG
+          - GCS_BUCKET_NAME
+          - SENSCLI_DREG
+          - LOG_LEVEL
+        depends_on:
+         - SensLAS
+        # volumes:
+        #   - server-agent-join-tokens:/mnt/join-tokens
+    docker_registry_api:
+        image: sensoriant.azurecr.io/priv-comp/docker-registry-api:${DOCKER_REGISTRY_API_TAG}
+        build:
+          context: images/SensDockerService
+          dockerfile: Dockerfile
+        environment:
+          - DOCKER_REGISTRY_API_AZURE_TOKEN
+          - DOCKER_REGISTRY_API_DOCKER_PORT
+          - DOCKER_REGISTRY_API_REGISTRY
+          - DOCKER_REGISTRY_API_SERVER_PORT
+        ports:
+          - target: ${DOCKER_REGISTRY_API_SERVER_PORT}
+            published: ${DOCKER_REGISTRY_API_DOCKER_PORT}
+        volumes:
+          - "/var/run/docker.sock:/var/run/docker.sock"
+    SensMariaDb:
+        image: mariadb:${MARIADB_TAG}
+        environment:
+          - MYSQL_ROOT_PASSWORD
+          - MYSQL_DATABASE
+          - MYSQL_USER
+          - MYSQL_PASSWORD
+          - MYSQL_ALLOW_EMPTY_PASSWORD
+          - MYSQL_RANDOM_ROOT_PASSWORD
+          - MYSQL_INITDB_SKIP_TZINFO
+        restart: always
+        volumes:
+          - ./images/SensMariaDb/initdb.d:/docker-entrypoint-initdb.d
+          # - ./images/SensMariaDb/.SensMariaDbData:/var/lib/mysql
+        ports:
+          - target: ${MARIADB_SERVER_PORT}
+            published: ${MARIADB_DOCKER_PORT}
+    secure_cloud_api_container:
+        image: $SECURE_CLOUD-API_IMAGENAME:$SECURE_CLOUD_API_TAG
+        build:
+          context: images/SensCloudApi
+        environment:
+          - SECURE_CLOUD_API_LLS_ENDPOINT
+          - SECURE_CLOUD_API_RLS_ENDPOINT
+          - SECURE_CLOUD_API_DOCKER_API_ENDPOINT
+          - SECURE_CLOUD_API_SENSCLI_API_ENDPOINT
+          - SECURE_CLOUD_API_IPFS_API_ENDPOINT
+          - SECURE_CLOUD_API_DOCKER_PORT
+          - SECURE_CLOUD_API_SERVER_PORT
+          - SECURE_CLOUD_API_USE_IPFS
+          - SECURE_CLOUD_API_GOOGLE_APPLICATION_CREDENTIALS
+          - SECURE_CLOUD_API_GCS_BUCKET_NAME
+          - SECURE_CLOUD_API_SANDBOX_HOSTNAME
+          - SECURE_CLOUD_API_SANDBOX_USERNAME
+          - SECURE_CLOUD_API_SANDBOX_IDENTITY_FILE
+          - product_version
+          - RELEASE_TAG
+          - MARIADB_HOST
+          - MARIADB_SERVER_PORT
+          - MYSQL_DATABASE
+          - MYSQL_USER
+          - MYSQL_PASSWORD
+        ports:
+          - ${SECURE_CLOUD_API_DOCKER_PORT}:${SECURE_CLOUD_API_SERVER_PORT}
+        volumes:
+          - secure-cloud-api-spire-platforms:/mnt/platforms
+          - ./creds:/opt/sensoriant/secure-cloud/api/credentials
+          - ./keys:/opt/sensoriant/secure-cloud/api/keys
+        depends_on:
+          - docker_registry_api
+          - senscli
+    senscli:
+        image: $SENSCLI_IMAGENAME:$SENSCLI_TAG
+        environment:
+         - GOOGLE_APPLICATION_CREDENTIALS=/opt/creds/gcs-cred.json
+         - SENSCLI_API_SERVER_PORT
+         - SENSCLI_API_DOCKER_PORT
+         - SENSCLI_DREG
+         - SENSCLI_DCRED
+         - SENSCLI_MNT
+        volumes:
+         - ./creds:/opt/creds
+        ports:
+          - ${SENSCLI_API_SERVER_PORT}:${SENSCLI_API_DOCKER_PORT}
+        command: sensec -http ${SENSCLI_API_DOCKER_PORT}
+    algorithm-sim:
+        build:
+            context: images/NferenceAlgorithm
+        image: $ALGORITHM_IMAGE-sim:$ALGORITHM_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+           #- ./images/NferenceAlgorithm/app:/app  
+         - ./images/NferenceAlgorithm/libsensattest-python.so:/opt/scone/lib/libattestation.so
+        command: /root/miniconda/bin/python3 /app/${ALGORITHM_ENTRYPOINT} --output /algorithm-output
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /root/miniconda/bin/python3 /app/nference_algorithm.py --output /algorithm-output
+    algorithm-hw:
+        build:
+            context: images/NferenceAlgorithm
+        image: $ALGORITHM_IMAGE-hw:$ALGORITHM_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+         - SCONE_MODE=hw
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+           #- ./images/NferenceAlgorithm/app:/app  
+#         - ./images/NferenceAlgorithm/libsensattest.so:/opt/scone/lib/libattestation.so
+        command: /root/miniconda/bin/python3 /app/nference_algorithm.py --output /algorithm-output
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /root/miniconda/bin/python3 /app/nference_algorithm.py --output /algorithm-output
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"
+    algorithm-gpu:
+        build:
+            context: images/NferenceAlgorithm
+        image: $ALGORITHM_IMAGE-gpu:$ALGORITHM_TAG
+        shm_size: '2gb'
+        pid: "host"
+        runtime: nvidia
+        environment:
+         - NVIDIA_VISIBLE_DEVICES=all
+         - SCONE_MODE=sim
+         - SCONE_VERSION=1
+         - SCONE_HEAP=4G
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_FORK=1
+         - SCONE_ALLOW_DLOPEN=2
+         - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-algorithm_policy/algorithm
+           #- SCONE_CONFIG_ID=gpu-algorithm_policy/algorithm
+         - "SENSLAS_PORT=${SENSLAS_PORT}"
+         - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+         - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+         - SCONE_FORK_OS=1
+         - SCONE_IGNORE_SIGHUP=1
+        volumes:
+         - ./volumes/algorithm-input:/algorithm-input
+         - ./volumes/algorithm-output/:/algorithm-output
+         - ./volumes/test:/test
+         - ./images/NferenceAlgorithm/libattestation-python.so:/opt/scone/lib/libattestation.so
+        command: /root/miniconda/bin/python3 /app/nference_algorithm.py --output /algorithm-output
+        devices:
+         - "/dev/nvidia-uvm"
+         - "/dev/nvidia-uvm-tools"
+         - "/dev/nvidia0"
+         - "/dev/nvidiactl"
+         - "/dev/nvidia-modeset"
+    SensLLS:
+        privileged: true
+        build:
+            context: images/SensSecureLog/Local-Logging-Service
+        image: $SENSLLS_IMAGENAME:$SENSLLS_TAG
+        volumes:
+            - /sys:/sys
+            - ./images/SensSecureLog:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSLLS_PORT:$SENSLLS_PORT
+        command: /SensLLS/SensLLS -httpMode=http -port=$SENSLLS_PORT -rlsApiCall=$SENSRLS_URL:$SENSRLS_MTLS_PORT/rls/v1 -rlsCertFile=/SensLLS/rlsCert.pem -rlsKeyFile=/SensLLS/rlsKey.pem
+    SensRLS:
+        privileged: true
+        build:
+            context: images/SensSecureLog/Remote-Logging-Service
+        image: $SENSRLS_IMAGENAME:$SENSRLS_TAG
+        volumes:
+            - /sys:/sys
+            - ./:/app
+        devices:
+            - "/dev/tpm0"
+            - "/dev/tpmrm0"
+        ports:
+            - $SENSRLS_MTLS_PORT:$SENSRLS_MTLS_PORT
+            - $SENSRLS_API_PORT:$SENSRLS_API_PORT
+        command: /SensRLS/SensRLS -httpMode=mtls -port=$SENSRLS_MTLS_PORT -apiHttpMode=http -apiPort=$SENSRLS_API_PORT -certFile=/SensRLS/rlsCert.pem -keyFile=/SensRLS/rlsKey.pem -apiCertFile=/SensRLS/apiRLSCert.pem -apiKeyFile=/SensRLS/apiRLSKey.pem
+    SensGcsPushAttested-sim:
+        build:
+            context: images/SensGcsPush
+            dockerfile: Dockerfile.sim
+        image: $SENSGCSPUSHATTESTED_SIM_IMAGENAME:$SENSGCSPUSH_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=sim
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIBS=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-sensgcspush_policy/sensgcspush
+            - "SENSLAS_PORT=${SENSLAS_PORT}"
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+        command: /opt/sensoriant/gcs/push/sensGcsPush -b $GCS_BUCKET_NAME -i $GCS_INPUT_PATH -p $GCS_OBJECT_PREFIX
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /opt/sensoriant/sensGcsPush/start.sh
+        volumes:
+            - ./images/SensGcsPush/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./images/SensGcsPush/datasets:/opt/sensoriant/gcs/push/datasets
+              #- ./images/SensGcsPush/filesToBucket:/opt/sensoriant/gcs/push/filesToBucket
+    SensGcsPushAttested-hw:
+        build:
+            context: images/SensGcsPush
+            dockerfile: Dockerfile.hw
+        image: $SENSGCSPUSHATTESTED_HW_IMAGENAME:$SENSGCSPUSH_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_INPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PUSH_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=hw
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIBS=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-sensgcspush_policy/sensgcspush
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+        command: /opt/sensoriant/gcs/push/sensGcsPush -b $GCS_BUCKET_NAME -i $GCS_INPUT_PATH -p $GCS_OBJECT_PREFIX
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /opt/sensoriant/sensGcsPush/start.sh
+        volumes:
+            - ./images/SensGcsPush/credentials:/opt/sensoriant/gcs/push/credentials
+            - ./images/SensGcsPush/datasets:/opt/sensoriant/gcs/push/datasets
+              #- ./images/SensGcsPush/filesToBucket:/opt/sensoriant/gcs/push/filesToBucket
+              #- ./volumes/test:/test
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"        
+    SensGcsPullAttested-sim:
+        build:
+            context: images/SensGcsPull
+            dockerfile: Dockerfile.sim
+        image: $SENSGCSPULLATTESTED_SIM_IMAGENAME:$SENSGCSPULL_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=sim
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIBS=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-sensgcspull_policy/sensgcspull
+            - "SENSLAS_PORT=${SENSLAS_PORT}"
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+        command: /opt/sensoriant/gcs/pull/sensGcsPull -b $GCS_BUCKET_NAME -o $GCS_OUTPUT_PATH -p $GCS_OBJECT_PREFIX
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /opt/sensoriant/sensGcsPull/start.sh
+        volumes:
+            - ./images/SensGcsPull/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./images/SensGcsPull/datasets:/opt/sensoriant/gcs/pull/datasets
+              #- ./images/SensGcsPush/filesToBucket:/opt/sensoriant/gcs/pull/filesToBucket                
+            - ./volumes/test:/test
+    SensGcsPullAttested-hw:
+        build:
+            context: images/SensGcsPull
+            dockerfile: Dockerfile.hw
+        image: $SENSGCSPULLATTESTED_HW_IMAGENAME:$SENSGCSPULL_TAG
+        shm_size: '2gb'
+        pid: "host"
+        environment:
+            - GCS_BUCKET_NAME
+            - GCS_OUTPUT_PATH
+            - GCS_OBJECT_PREFIX
+            - GOBIN
+            - GOOGLE_APPLICATION_CREDENTIALS=${GCS_PULL_CREDENTIALS}
+            - MODE
+            - SCONE_MODE=hw
+            - SCONE_HEAP=4G
+            - SCONE_SYSLIBS=1
+            - SCONE_LOG=0
+            - SCONE_VERSION=1
+            - SCONE_CONFIG_ID=${POLICY_NAMESPACE}-sensgcspull_policy/sensgcspull
+            - "CAS_MRENCLAVE=${CAS_MRENCLAVE}"
+            - "SCONE_CAS_ADDR=${CAS_IP_ADDR}"
+            - SCONE_FORK_OS=1
+            - SCONE_IGNORE_SIGHUP=1
+        command: /opt/sensoriant/gcs/pull/sensGcsPull -b $GCS_BUCKET_NAME -i $GCS_OUTPUT_PATH -p $GCS_OBJECT_PREFIX
+        #command: strace -f -o /test/strace.log -e trace='!nanosleep,sched_yield,clock_gettime,clock_nanosleep,futex,ioctl,gettimeofday' /opt/sensoriant/sensGcsPull/start.sh
+        volumes:
+            - ./images/SensGcsPull/credentials:/opt/sensoriant/gcs/pull/credentials
+            - ./images/SensGcsPull/datasets:/opt/sensoriant/gcs/pull/datasets
+              #- ./images/SensGcsPull/filesToBucket:/opt/sensoriant/gcs/pull/filesToBucket
+            - ./volumes/test:/test
+        devices:
+         - "/dev/isgx"
+         - "/dev/gsgx"              
+volumes:
+    secure-cloud-api-spire-platforms:
+  

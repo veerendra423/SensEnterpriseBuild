@@ -1,0 +1,16 @@
+version: '3.2'
+services:
+    com.sensoriant.sensdecrypt:
+        build:
+            context: . 
+        image: sensoriant.azurecr.io/nference/sensdecrypt:${SENSDECRYPT_TAG}
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=7
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /decrypt-input/ -o /decrypt-output -k $SENSDECRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/decrypt-input:/decrypt-input
+         - ./volumes/decrypt-output:/decrypt-output
+

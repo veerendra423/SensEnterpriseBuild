@@ -1,0 +1,32 @@
+# The file containing the sqlite database
+# Relative paths are resolved from this configuration file.
+[database]
+path = "/etc/cas/cas.db"
+
+[api]
+api_listen = "0.0.0.0:8081"
+enclave_listen = "0.0.0.0:18765"
+
+# IAS config is only necessary if the attestation policy requires Intel
+# attestation scheme, that is for Intel or Scone attestation with non-empty
+# mrenclave whitelist.
+# Refer to https://api.trustedservices.intel.com/documents/sgx-attestation-api-spec.pdf
+# for more insight.
+[ias]
+# The 16 byte long Service Provider Identity hex-encoded.
+# You've obtained this ID when you registered with Intel's IAS Service
+spid           = "8B09FF23D890D72EE73815CD86AF9D54"
+# Linkability setting of the service provider account (configured during
+# registration with IAS)
+linkable_quotes     = true
+# User authentication for IAS API Rev. 5 using the Ocp-Apim-Subscription-Key HTTP Header
+sp_key          = "8c50914cc8484f65bcbfbf361b6b24de"
+# Base URL of the IAS service.
+# This setting is optional. If omitted the dev environments default url will be used.
+# Note, that this url is different for Rev. 4 and Rev. 5 - be sure to use the correct one.
+base_uri         = "https://api.trustedservices.intel.com/sgx/dev/attestation/v3"
+# User authentication using IAS API Rev. 4 using a client certificate
+# Will be ignored if `sp_key` (Rev. 5 authentication) is provided
+[ias.identity]
+cert = "ias_client.pem"
+key = "ias_client.key"

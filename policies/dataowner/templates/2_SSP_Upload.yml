@@ -1,0 +1,56 @@
+name: $UPLOAD_POLICY_NAME
+version: "0.2"
+
+# Access control:
+#   - only the data owner (CREATOR) can read or update the session
+#   - even the data owner cannot read the session secrets (i.e., the volume key and tag) or delete the session
+
+access_policy:
+  read:
+   - CREATOR
+  update:
+   - CREATOR
+
+# Service: copy_data
+#   - copies data from a given input directory give by argument -i
+#   - copies data to an output directory (which is in this case an encrypted volume) given by argument -o
+
+services:
+   - name: upload
+     image_name: upload_image
+     command: /uploader -e $DB_ADDR:$DB_PORT -u $$SCONE::db_user$$ -d $DATABASE -x /etc/maxscale-ca.crt -k /etc/maxscale-client.key -c /etc/maxscale-client.crt -i /encrypted-input
+     mrenclaves: ["$MRENCLAVE_UPLOAD"]
+     pwd: /
+     environment:
+       DB_CACERT: /etc/maxscale-ca.crt # import content of MariaDB CA certificate from DB policy session
+       DB_CLIENT_KEY: /etc/maxscale-client.key # import content of client key from DB policy session
+       DB_CLIENT_CERT: /etc/maxscale-client.crt # import content of client certificate from DB policy session
+
+images:
+  - name: upload_image
+    injection_files:
+        - path: /etc/maxscale-ca.crt
+          content: $$SCONE::MAXSCALE_CA_CERT.chain$$ # Use the database session's CA certificate as a trusted root CA cert. We can use chain here because we verify the session name in the DB
+        - path: /etc/maxscale-client.crt
+          content: $$SCONE::MAXSCALE_CLIENT_CERT.crt$$
+        - path: /etc/maxscale-client.key
+          content: $$SCONE::MAXSCALE_CLIENT_CERT.key$$
+    volumes:
+      - name: encrypted_input_volume
+        path: /encrypted-input
+
+# Import client credentials from DB session.
+secrets:
+    - name: db_user
+      kind: ascii
+      value: $DB_USER
+    - name: MAXSCALE_CLIENT_CERT
+      import: $MAXSCALE_POLICY
+    - name: MAXSCALE_CA_CERT
+      import: $MAXSCALE_POLICY
+
+volumes:
+  # No fspf key and tag: an encrypted volume will be automatically generated
+  # on the first run
+  - name: encrypted_input_volume
+    import: $INPUT_POLICY_NAME

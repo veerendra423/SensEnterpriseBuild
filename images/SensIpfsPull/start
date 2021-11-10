@@ -1,0 +1,10 @@
+#!/bin/bash
+if [ "$MODE" = "pipeline" ]
+then
+    echo "Running in pipeline mode"
+    prefect backend server
+    python3 senspull.py
+else
+    ./decrypt -d -nd -k=nokey -i=$IPFS_DIR -o=/sensipfspull-output/
+fi
+

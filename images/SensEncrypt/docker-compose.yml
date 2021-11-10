@@ -1,0 +1,16 @@
+version: '3.2'
+services:
+    com.sensoriant.sensencrypt:
+        build:
+            context: . 
+        image: sensoriant.azurecr.io/nference/sensencrypt:${SENSENCRYPT_TAG}
+        environment:
+         - SCONE_MODE=sim
+         - SCONE_SYSLIBS=1
+         - SCONE_LOG=0
+         - SCONE_ALLOW_DLOPEN=2
+        command: /copy_files -i /encrypt-input/ -o /encrypt-output -k $SENSENCRYPT_FSPF_KEY
+        volumes:
+         - ./volumes/encrypt-input:/encrypt-input
+         - ./volumes/encrypt-output:/encrypt-output
+
